@@ -23,11 +23,43 @@ Directories are processed in lexicographical order to determine the commit order
 Each commit assets directory (e.g. `assets/001-init-repo/`) should contain:
 - `tree/` directory - the file tree to be committed
 - `commit_msg` file - the commit message
-- `deleted_files` file - a list of files to be deleted in this commit (relative to the repository root)
+
+Optional files:
+- `move_files` file - a list of file moves/renames (processed before tree copy)
+- `deleted_files` file - a list of files to be deleted (processed after tree copy)
 
 Files in `tree/` are copied over the existing repo. Existing files not present in tree/ are preserved. The file in `tree/` fully replaces the existing file. Partial updates (patching) are not supported.
 
-Optionally it can also contain these files to override defaults from `rgen-conf.json`:
+### move_files file
+
+The `move_files` file specifies file renames or moves. Each line contains an old path and new path separated by `->`. This is processed before the tree copy, allowing you to move a file and then update its content in the same commit.
+
+Example content of `move_files` file:
+```
+# Rename a file
+gl-test-data/old_name.txt -> gl-test-data/new_name.txt
+
+# Move to subdirectory
+gl-test-data/file.txt -> gl-test-data/subdir/file.txt
+```
+
+Lines starting with `#` are comments. Empty lines are ignored. Paths are relative to the repository root.
+
+Git will detect these as renames if the content similarity is above its threshold (default 50%).
+
+### deleted_files file
+
+Example content of `deleted_files` file:
+```
+file1.txt
+dir1/file2.txt
+```
+
+Exact relative paths from the repo root, one per line. Wildcards/globs are not supported.
+
+### Overriding defaults
+
+Optionally the commit directory can also contain these files to override defaults from `rgen-conf.json`:
 - author_name
 - author_email
 - author_date
@@ -85,7 +117,7 @@ All fields are required.
 
 ## Generation process
 
-`git-rgen` 
+`git-rgen`
 - reads the `rgen-conf.json` configuration file.
 - checks that destination paths do not already exist or is empty.
 - checks that source paths exist.
@@ -93,6 +125,7 @@ All fields are required.
 - initializes git repositories in the destination paths.
 - iterates over the commit assets directories in the source path (e.g. `assets/001-init-repo/`, `assets/002-commit-spec/`, ...).
     - For each commit assets directory:
+    - It processes `move_files` to rename/move files.
     - It copies files from the `tree/` directory to the repository.
     - It deletes files listed in the `deleted_files` file.
     - It creates a commit with the specified or default author, committer, and commit message.

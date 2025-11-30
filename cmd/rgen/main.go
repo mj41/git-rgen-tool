@@ -198,6 +198,45 @@ func run() error {
 
 		commitMsg := readFileOr(filepath.Join(assetDir, "commit_msg"), config.Defaults.CommitMsg)
 
+		// Process move_files (renames/moves) - must happen before tree copy
+		moveFilesPath := filepath.Join(assetDir, "move_files")
+		if exists, _ := fileExists(moveFilesPath); exists {
+			content, err := os.ReadFile(moveFilesPath)
+			if err != nil {
+				return fmt.Errorf("failed to read move_files in %s: %w", dirName, err)
+			}
+			lines := strings.Split(string(content), "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+				// Parse "old_path -> new_path" format
+				parts := strings.SplitN(line, "->", 2)
+				if len(parts) != 2 {
+					return fmt.Errorf("invalid move_files line in %s: %q (expected 'old -> new')", dirName, line)
+				}
+				oldPath := strings.TrimSpace(parts[0])
+				newPath := strings.TrimSpace(parts[1])
+				if oldPath == "" || newPath == "" {
+					return fmt.Errorf("invalid move_files line in %s: %q (empty path)", dirName, line)
+				}
+
+				oldFullPath := filepath.Join(destPath, oldPath)
+				newFullPath := filepath.Join(destPath, newPath)
+
+				// Create destination directory if needed
+				if err := os.MkdirAll(filepath.Dir(newFullPath), 0755); err != nil {
+					return fmt.Errorf("failed to create directory for move in %s: %w", dirName, err)
+				}
+
+				// Move the file
+				if err := os.Rename(oldFullPath, newFullPath); err != nil {
+					return fmt.Errorf("failed to move %s -> %s in %s: %w", oldPath, newPath, dirName, err)
+				}
+			}
+		}
+
 		// Copy tree
 		treeDir := filepath.Join(assetDir, "tree")
 		if exists, _ := dirExists(treeDir); exists {
@@ -315,6 +354,7 @@ func copyDir(src, dst string) error {
 		if relPath == "." {
 			return nil
 		}
+
 		destPath := filepath.Join(dst, relPath)
 
 		if info.IsDir() {
